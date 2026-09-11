@@ -2596,7 +2596,13 @@ def heartbeat_fire_claim(job_id: str, *, expected_owner: str) -> bool:
     def apply(jobs, _i, job):
         return _refresh_claim(jobs, job.get("fire_claim"), expected_owner)
 
-    return _under_fire_fence(job_id, lambda: _with_job(job_id, apply, False))
+    # Do NOT re-acquire the per-job fire fence here. heartbeat_fire_claim is the
+    # *renewal* path for a run that already passed the gate (claim_job_for_fire);
+    # re-entering _under_fire_fence contends with the actual fence holder and can
+    # time out after the owner's TTL, producing the recurring "Timed out waiting
+    # for local fire fence; failing closed" false failures. The owner-check in
+    # _refresh_claim already prevents stealing another runner's lease.
+    return _with_job(job_id, apply, False)
 
 
 # Completed one-shots are retained in jobs.json (final status stays inspectable) and pruned by
